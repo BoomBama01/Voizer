@@ -45,8 +45,6 @@ export interface SegmentFeatures {
   narrowband: boolean;
 }
 
-const DB_FLOOR = -90;
-
 function movingAverage(values: Float64Array, radius: number): Float64Array {
   const n = values.length;
   const out = new Float64Array(n);

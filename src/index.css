@@ -136,7 +136,9 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-mono);
+    font-family:
+      "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+      "Liberation Mono", monospace;
     font-feature-settings: "liga" 0, "calt" 0;
     text-rendering: optimizeLegibility;
   }
@@ -191,5 +193,19 @@
 
   .mono-cap {
     @apply text-[11px] tracking-[0.18em] uppercase;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blink {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

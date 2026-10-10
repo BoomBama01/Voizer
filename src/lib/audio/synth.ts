@@ -40,16 +40,14 @@ const VOWELS: Array<[number, number, number]> = [
 class Resonator {
   private y1 = 0;
   private y2 = 0;
-  private p1: number;
-  private c: number;
+  private readonly p1: number;
+  private readonly c: number;
+  private readonly sampleRate: number;
   private a = 0;
   private b = 0;
 
-  constructor(
-    private freq: number,
-    private bw: number,
-    private sampleRate: number,
-  ) {
+  constructor(freq: number, bw: number, sampleRate: number) {
+    this.sampleRate = sampleRate;
     const t = 1 / sampleRate;
     this.p1 = 2 * Math.exp(-Math.PI * bw * t);
     this.c = -Math.exp(-2 * Math.PI * bw * t);
@@ -57,8 +55,7 @@ class Resonator {
   }
 
   setFreq(freq: number) {
-    this.freq = freq;
-    this.b = this.p1 * Math.cos((2 * Math.PI * this.freq) / this.sampleRate);
+    this.b = this.p1 * Math.cos((2 * Math.PI * freq) / this.sampleRate);
     this.a = 1 - this.b - this.c;
   }
 
@@ -73,7 +70,10 @@ class Resonator {
 /** One-pole low-pass used for the glottal spectral tilt. */
 class OnePole {
   private z = 0;
-  constructor(private a: number) {}
+  private readonly a: number;
+  constructor(a: number) {
+    this.a = a;
+  }
   process(x: number): number {
     this.z = this.z + this.a * (x - this.z);
     return this.z;

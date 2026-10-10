@@ -43,16 +43,31 @@ export async function decodeAudioBlob(blob: Blob): Promise<DecodedAudio> {
     void context.close();
   }
 
-  if (buffer.duration > MAX_DURATION_SEC) {
+  // MediaRecorder streams carry no Duration element, so some browsers report
+  // `Infinity` here even though the PCM decoded fine. Fall back to the frame count.
+  const rawDuration = buffer.duration;
+  const durationSec =
+    Number.isFinite(rawDuration) && rawDuration > 0
+      ? rawDuration
+      : Number.isFinite(buffer.length) && buffer.length > 0
+        ? buffer.length / buffer.sampleRate
+        : Number.NaN;
+
+  if (!Number.isFinite(durationSec)) {
     throw new Error(
-      `The clip is ${Math.round(buffer.duration / 60)} min long — the limit is ${MAX_DURATION_SEC / 60} min.`,
+      "This recording has no readable length — try a different browser or upload an audio file instead.",
     );
   }
-  if (buffer.duration < 0.75) {
+  if (durationSec > MAX_DURATION_SEC) {
+    throw new Error(
+      `The clip is ${Math.round(durationSec / 60)} min long — the limit is ${MAX_DURATION_SEC / 60} min.`,
+    );
+  }
+  if (durationSec < 0.75) {
     throw new Error("The clip is too short — record at least a second of speech.");
   }
 
-  const length = Math.max(1, Math.ceil(buffer.duration * ANALYSIS_SAMPLE_RATE));
+  const length = Math.max(1, Math.ceil(durationSec * ANALYSIS_SAMPLE_RATE));
   const offline = new OfflineAudioContext(1, length, ANALYSIS_SAMPLE_RATE);
   const source = offline.createBufferSource();
   source.buffer = buffer;

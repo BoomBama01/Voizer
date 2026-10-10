@@ -81,7 +81,6 @@ function sniffVideo(bytes: Uint8Array): string | null {
   return null;
 }
 
-const AUDIO_EXTENSIONS = new Set(["wav", "mp3", "m4a", "ogg", "oga", "flac", "webm", "aif", "aiff"]);
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "gif", "webp", "heic", "avif"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "mov", "webm", "mkv", "avi"]);
 const TEXT_EXTENSIONS = new Set(["txt", "md", "json", "csv", "log", "srt", "vtt", ""]);

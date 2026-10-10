@@ -1,5 +1,6 @@
 import { ANALYSIS_SAMPLE_RATE, clamp, sigmoid } from "./dsp";
 import { extractSegmentFeatures, type SegmentFeatures } from "./features";
+import { resolveModel } from "./model";
 
 export type Verdict = "ai" | "partial" | "uncertain" | "real";
 export type SegmentVerdict = "ai" | "uncertain" | "real";
@@ -271,6 +272,8 @@ function buildResult(
     .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
 
   const notes: string[] = [];
+  const model = resolveModel();
+  if (model.fallbackNote) notes.push(model.fallbackNote);
   if (segments.some((s) => s.features.narrowband)) {
     notes.push(
       "Narrowband telephone channel detected (≈3.4 kHz). Bandwidth-based cues are down-weighted; rely more on the noise-floor and scam-script signals.",
@@ -291,7 +294,7 @@ function buildResult(
   }
 
   return {
-    model: "vsa-heuristic-0.1",
+    model: model.backend.modelId,
     durationSec,
     sampleRate,
     probability,

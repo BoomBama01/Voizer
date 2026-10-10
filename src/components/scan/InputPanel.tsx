@@ -175,7 +175,7 @@ export function InputPanel({
               synthetic clips generated on the fly — no downloads
             </span>
             <div className="grid gap-1.5">
-              {DEMOS.map((clip) => (
+              {DEMO_CLIPS.map((clip) => (
                 <button
                   key={clip.id}
                   type="button"

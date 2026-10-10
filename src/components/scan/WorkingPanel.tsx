@@ -28,7 +28,7 @@ export function WorkingPanel({
             </StatusChip>
             <span
               className={
-                stage.status === "pending" ? "text-muted-foreground/70" : "text-foreground"
+                stage.status === "pending" ? "text-muted-foreground" : "text-foreground"
               }
             >
               {stage.label}

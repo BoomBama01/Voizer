@@ -1,293 +1,276 @@
-## Overview
+# VoiceShield AI
 
-This project uses the following tech stack:
-- Vite
-- Typescript
-- React Router v7 (all imports from `react-router` instead of `react-router-dom`)
-- React 19 (for frontend components)
-- Tailwind v4 (for styling)
-- Shadcn UI (for UI components library)
-- Lucide Icons (for icons)
-- Convex (for backend & database)
-- Convex Auth (for authentication)
-- Framer Motion (for animations)
-- Three js (for 3d models)
+**A public, in-browser detector for AI-generated and cloned voice recordings — with scam-script analysis for phone transcripts.**
 
-All relevant files live in the 'src' directory.
+> Detection is probabilistic, not proof. Never rely on a single result to move money or to accuse someone.
 
-Use bun for the package manager.
+Version 1 ships one deep, tested path: **voice-clone detection for public users**. Image, video and text detectors are deliberately routed to a clear "v2" notice rather than faked.
 
-## Setup
+---
 
-This project is set up already and running on a cloud environment, as well as a convex development in the sandbox.
+## Table of contents
 
-## Environment Variables
+- [What v1 does](#what-v1-does)
+- [Quick start](#quick-start)
+- [Architecture](#architecture)
+- [How the detector works](#how-the-detector-works)
+- [Scam-script engine](#scam-script-engine)
+- [Demo mode](#demo-mode)
+- [Privacy model](#privacy-model)
+- [Testing & quality](#testing--quality)
+- [Module API reference](#module-api-reference)
+- [Three-minute demo script](#three-minute-demo-script)
+- [Roadmap (v2+)](#roadmap-v2)
+- [Limitations](#limitations)
 
-The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_URL environment variables on the client side.
+---
 
-The convex server has a separate set of environment variables that are accessible by the convex backend.
+## What v1 does
 
-Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
+| Capability | Status in v1 |
+| --- | --- |
+| Audio upload (wav / mp3 / m4a / ogg / flac / webm, ≤ 25 MB) | ✅ magic-byte verified |
+| Live microphone recording | ✅ (Web Audio + MediaRecorder) |
+| AI-generated vs human probability, verdict, confidence | ✅ calibrated, with a 40–60% **uncertain** band |
+| Waveform + spectrogram with flagged windows | ✅ WaveSurfer.js + canvas |
+| Sliding 4-second window analysis (catches partial clones) | ✅ 2 s hop |
+| Plain-language explainability ("why was this flagged?") | ✅ per-cue contribution bars |
+| Scam-script transcript analysis (English, हिन्दी, ಕನ್ನಡ) | ✅ rule engine, highlighted phrases |
+| Combined risk meter (Safe / Suspicious / High Risk) | ✅ voice score + script score |
+| Check-Anything routing for image/video/text files | ✅ routes with an honest v2 notice |
+| Demo mode with sample clips | ✅ synthetic clips generated on the fly |
+| SHA-256 fingerprint, technical details, delete-now | ✅ |
+| Auth, history, PDF reports, public REST API, admin | ⏳ v2 (out of scope for v1) |
 
+---
 
-# Using Authentication (Important!)
+## Quick start
 
-You must follow these conventions when using authentication.
-
-## Auth is already set up.
-
-All convex authentication functions are already set up. The auth currently uses email OTP and anonymous users, but can support more.
-
-The email OTP configuration is defined in `src/convex/auth/emailOtp.ts`. DO NOT MODIFY THIS FILE.
-
-Also, DO NOT MODIFY THESE AUTH FILES: `src/convex/auth.config.ts` and `src/convex/auth.ts`.
-
-## Using Convex Auth on the backend
-
-On the `src/convex/users.ts` file, you can use the `getCurrentUser` function to get the current user's data.
-
-## Using Convex Auth on the frontend
-
-The `/auth` page is already set up to use auth. Navigate to `/auth` for all log in / sign up sequences.
-
-You MUST use this hook to get user data. Never do this yourself without the hook:
-```typescript
-import { useAuth } from "@/hooks/use-auth";
-
-const { isLoading, isAuthenticated, user, signIn, signOut } = useAuth();
+```bash
+bun install       # install dependencies
+bun run dev       # start the dev server (Freebuff runs this for you)
+bun test          # 48 unit + integration tests (Vitest)
+bun tsc -b --noEmit
+bunx eslint src/pages src/components src/lib
 ```
 
-## Protected Routes
-
-The starter `/dashboard` route is protected with `RequireAuth`. Extend that page
-for the product's authenticated experience, and reuse `RequireAuth` when adding
-another protected route — do NOT hand-roll a redirect to `/auth`, since landing
-on a bare sign-in form with no explanation of what was blocked is confusing.
-
-`RequireAuth` states the block on the page the visitor asked for and sends them
-to `/auth?returnTo=<current route>` when they choose to sign in, so they come
-back to it. Pass `title` and `description` to say what the page is:
-
-```tsx
-<Route
-  path="/dashboard"
-  element={
-    <RequireAuth
-      title="Sign in to view your dashboard"
-      description="Your projects and settings live here."
-    >
-      <Dashboard />
-    </RequireAuth>
-  }
-/>
-```
-
-Pass `redirectImmediately` for a route where bouncing straight to `/auth` really
-is better.
-
-## Auth Page
-
-The auth page is defined in `src/pages/Auth.tsx`. Send sign-in and sign-up actions
-to `/auth`.
-
-## Authorization
-
-You can perform authorization checks on the frontend and backend.
-
-On the frontend, you can use the `useAuth` hook to get the current user's data and authentication state.
-
-You should also be protecting queries, mutations, and actions at the base level, checking for authorization securely.
-
-## Adding a redirect after auth
-
-The `/auth` route in `src/main.tsx` redirects to `/dashboard` by default. If the
-product's main authenticated route is different, update `redirectAfterAuth` to
-that route. A validated same-origin `returnTo` query parameter takes priority so
-users can resume the protected page they originally requested. Never leave an
-authenticated product redirecting back to the public landing page.
-
-## Complete authenticated products
-
-When the requested product implies accounts, a workspace, a dashboard, or other
-signed-in functionality, the task is not complete with only a landing page and
-auth form. Build the main authenticated experience, protect its route, and verify
-that signing in reaches it.
-
-# Frontend Conventions
-
-You will be using the Vite frontend with React 19, Tailwind v4, and Shadcn UI.
-
-Generally, pages should be in the `src/pages` folder, and components should be in the `src/components` folder.
-
-Shadcn primitives are located in the `src/components/ui` folder and should be used by default.
-
-## Page routing
-
-Your page component should go under the `src/pages` folder.
-
-When adding a page, update the react router configuration in `src/main.tsx` to include the new route you just added.
-
-## Shad CN conventions
-
-Follow these conventions when using Shad CN components, which you should use by default.
-- Remember to use "cursor-pointer" to make the element clickable
-- For title text, use the "tracking-tight font-bold" class to make the text more readable
-- Always make apps MOBILE RESPONSIVE. This is important
-- AVOID NESTED CARDS. Try and not to nest cards, borders, components, etc. Nested cards add clutter and make the app look messy.
-- AVOID SHADOWS. Avoid adding any shadows to components. stick with a thin border without the shadow.
-- Avoid skeletons; instead, use the loader2 component to show a spinning loading state when loading data.
-
-
-## Landing Pages
-
-You must always create good-looking designer-level styles to your application. 
-- Make it well animated and fit a certain "theme", ie neo brutalist, retro, neumorphism, glass morphism, etc
-
-Use known images and emojis from online.
-
-If the user is logged in already, show the get started button to say "Dashboard" or "Profile" instead to take them there.
-
-## Responsiveness and formatting
-
-Make sure pages are wrapped in a container to prevent the width stretching out on wide screens. Always make sure they are centered aligned and not off-center.
-
-Always make sure that your designs are mobile responsive. Verify the formatting to ensure it has correct max and min widths as well as mobile responsiveness.
-
-- Always create sidebars for protected dashboard pages and navigate between pages
-- Always create navbars for landing pages
-- On these bars, the created logo should be clickable and redirect to the index page
-
-## Animating with Framer Motion
-
-You must add animations to components using Framer Motion. It is already installed and configured in the project.
-
-To use it, import the `motion` component from `framer-motion` and use it to wrap the component you want to animate.
-
-
-### Other Items to animate
-- Fade in and Fade Out
-- Slide in and Slide Out animations
-- Rendering animations
-- Button clicks and UI elements
-
-Animate for all components, including on landing page and app pages.
-
-## Three JS Graphics
-
-Your app comes with three js by default. You can use it to create 3D graphics for landing pages, games, etc.
-
-
-## Colors
-
-You can override colors in: `src/index.css`
-
-This uses the oklch color format for tailwind v4.
-
-Always use these color variable names.
-
-Make sure all ui components are set up to be mobile responsive and compatible with both light and dark mode.
-
-Set theme using `dark` or `light` variables at the parent className.
-
-## Styling and Theming
-
-When changing the theme, always change the underlying theme of the shad cn components app-wide under `src/components/ui` and the colors in the index.css file.
-
-Avoid hardcoding in colors unless necessary for a use case, and properly implement themes through the underlying shad cn ui components.
-
-When styling, ensure buttons and clickable items have pointer-click on them (don't by default).
-
-Always follow a set theme style and ensure it is tuned to the user's liking.
-
-## Toasts
-
-You should always use toasts to display results to the user, such as confirmations, results, errors, etc.
-
-Use the shad cn Sonner component as the toaster. For example:
+Open `/` for the landing page, `/scan` for the scanner, or jump straight to a demo:
 
 ```
-import { toast } from "sonner"
-
-import { Button } from "@/components/ui/button"
-export function SonnerDemo() {
-  return (
-    <Button
-      variant="outline"
-      onClick={() =>
-        toast("Event has been created", {
-          description: "Sunday, December 03, 2023 at 9:00 AM",
-          action: {
-            label: "Undo",
-            onClick: () => console.log("Undo"),
-          },
-        })
-      }
-    >
-      Show Toast
-    </Button>
-  )
-}
+/scan?demo=voice-memo     # natural recording  → LIKELY HUMAN
+/scan?demo=cloned-call    # cloned bank call   → LIKELY AI-GENERATED + HIGH RISK
+/scan?demo=mixed-recording# half-edited clip   → PARTIALLY SYNTHETIC
 ```
 
-Remember to import { toast } from "sonner". Usage: `toast("Event has been created.")`
+There is no server-side component to configure: every byte of analysis happens in the browser tab. The Convex backend is only used by the template's optional auth flow (`/auth`, protected `/dashboard`).
 
-## Dialogs
+---
 
-Always ensure your larger dialogs have a scroll in its content to ensure that its content fits the screen size. Make sure that the content is not cut off from the screen.
+## Architecture
 
-Ideally, instead of using a new page, use a Dialog instead. 
+```
+                       ┌──────────────────────────────────────────────┐
+  browser tab          │                  VoiceShield AI             │
+                       │                                              │
+  file / mic  ──────►  │  validate.ts   magic bytes, size, duration   │
+  demo clip   ──────►  │  decode.ts     WebAudio decode → 16 kHz mono │
+                       │       │                                      │
+                       │       ├─► spectrogram.ts  log-freq image     │
+                       │       ├─► features.ts     per-window cues    │
+                       │       │      └─ fft.ts (radix-2) + dsp.ts    │
+                       │       └─► detector.ts     scoring, verdict,  │
+                       │                         calibration, explain │
+                       │                                              │
+  transcript  ──────►  │  scam/rules.ts   EN / हिन्दी / ಕನ್ನಡ flags   │
+                       │  scam/risk.ts    voice + script → risk meter │
+                       │                                              │
+                       │  pages/Landing.tsx     marketing + FAQ       │
+                       │  pages/Scan.tsx        pipeline + results    │
+                       │       └─ components/scan/*  result UI        │
+                       └──────────────────────────────────────────────┘
+                              ▲  no network requests for analysis
+                              │
+                    optional: Convex auth (template)
+```
 
-# Using the Convex backend
+Folder layout:
 
-You will be implementing the convex backend. Follow your knowledge of convex and the documentation to implement the backend.
+```
+src/
+  components/
+    Terminal.tsx            terminal-themed primitives (status chips, panes)
+    site/                   header + footer
+    scan/                   input panel, progress, result panels
+    ui/                     shadcn/ui primitives (theme tokens in index.css)
+  lib/
+    audio/                  FFT, DSP, features, detector, spectrogram,
+                            browser decode, validation, demo synthesiser
+    scam/                   transcript rules + combined risk meter
+    demo/                   demo clip definitions
+    ui-meta.ts              verdict / risk / confidence display metadata
+  pages/                    Landing, Scan, Auth, Dashboard
+  test/app.test.tsx         render + end-to-end demo flow tests
+  convex/                   template auth (unchanged)
+```
 
-## The Convex Schema
+---
 
-You must correctly follow the convex schema implementation.
+## How the detector works
 
-The schema is defined in `src/convex/schema.ts`.
+**Model id: `vsa-heuristic-0.1`** — a signal-heuristic baseline. It is intentionally *not* a black box: every result shows the measurements behind the number.
 
-Do not include the `_id` and `_creationTime` fields in your queries (it is included by default for each table).
-Do not index `_creationTime` as it is indexed for you. Never have duplicate indexes.
+1. **Decode & resample.** The upload is decoded with the Web Audio API and resampled to 16 kHz mono through an `OfflineAudioContext` (band-limited, no aliasing).
+2. **Window.** Overlapping 4-second windows with a 2-second hop. Each window is scored independently, so a half-cloned recording is caught even when its average looks ordinary.
+3. **Measure** (`features.ts`):
+   - noise floor / SNR (p10 vs p90 frame energy)
+   - digital-zero ratio in the quietest frames
+   - 99.5 % energy edge (bandwidth truncation)
+   - strongest spectral cliff above 4.5 kHz (vocoder/codec wall)
+   - pitch stability (f0 drift in semitones)
+   - frame-to-frame spectral flux
+   - energy above 6 kHz and 5–8 kHz spectral flatness (sibilance texture)
+   - narrowband-telephone detection (≈3.4 kHz) — bandwidth cues are down-weighted automatically for phone recordings
+4. **Score.** Each cue maps to an evidence value in `[0,1]`, weighted into a logit, then temperature-scaled (`T = 1.15`) and squashed with a sigmoid → a calibrated 0–100 % probability.
+5. **Verdict bands.** `< 40 %` likely human · `40–60 %` **uncertain** (never forced) · `> 60 %` likely AI-generated · plus a distinct **partially synthetic** verdict when windows disagree.
+6. **Explain.** Per-cue signed contributions are aggregated and sorted; the top cues are rendered in plain language with their measured values.
 
+Calibration, weights and thresholds all live in one exported object: `DETECTOR_PARAMS` (`src/lib/audio/detector.ts`).
 
-## Convex Actions: Using CRUD operations
+**Backend config flag** — `src/lib/audio/model.ts` holds the model registry
+(`heuristic`, `lfcc-cnn`, `wav2vec2-aasist`) and resolves the configured backend from
+`VITE_VSH_MODEL`. v1 bundles only `heuristic`; asking for a learned checkpoint falls back
+to the bundled scorer **with an explicit note on the result** rather than silently
+pretending a missing model ran.
 
-When running anything that involves external connections, you must use a convex action with "use node" at the top of the file.
+---
 
-You cannot have queries or mutations in the same file as a "use node" action file. Thus, you must use pre-built queries and mutations in other files.
+## Scam-script engine
 
-You can also use the pre-installed internal crud functions for the database:
+`src/lib/scam/rules.ts` holds weighted indicators across eight categories: urgency, credential theft (OTP/PIN), KYC ruse, bank impersonation, authority impersonation, intimidation, money transfer, remote-access apps, prize lures and personal-data harvesting — with phrase lists in English, Devanagari and Kannada.
+
+- Matches are **Unicode-aware**: JavaScript's `\b` is ASCII-only, so each pattern is wrapped in `\p{L}`/`\p{N}` boundary lookarounds instead.
+- Every match keeps its character offsets so the UI can highlight the exact phrase and explain it.
+- The script score saturates (`100 · (1 − e^{−1.35·Σw})`) so many distinct indicators approach 100 while repeats add little.
+- `combineRisk()` merges the two detectors: the stronger signal drives the meter, with a small bump when both are elevated. Thresholds: `< 35` safe, `< 65` suspicious, else high risk.
+
+---
+
+## Demo mode
+
+Demo clips are **synthesized in the browser** by `src/lib/audio/synth.ts` (a formant speech synthesiser) — they are illustrations, not recordings of real people:
+
+| Clip | Construction | Expected result |
+| --- | --- | --- |
+| `voice-memo` | room tone, mains hum, reverb, natural f0 drift | LIKELY HUMAN · SAFE |
+| `cloned-bank-call` | digital silence, 6.2 kHz brick wall, flat loudness, locked f0 | LIKELY AI-GENERATED · HIGH RISK |
+| `mixed-recording` | natural first half, cloned second half | PARTIALLY SYNTHETIC |
+
+The transcripts attached to them are sample scripts for the rule engine.
+
+---
+
+## Privacy model
+
+- **Nothing is uploaded.** Decoding, resampling, FFT, scoring and hashing all run locally; there is no analysis endpoint.
+- **No account, no history server.** Results live in React state for the tab only.
+- **Delete now** clears the waveform, transcript and every derived number immediately; closing the tab does the same.
+- The template's Convex auth is untouched and not required for scanning.
+
+---
+
+## Testing & quality
+
+```bash
+bun test                              # Vitest: 48 tests
+bun tsc -b --noEmit                   # strict TypeScript
+bunx eslint <paths>                   # ESLint (flat config) + Prettier
+```
+
+Coverage of the core modules:
+
+- `detector.test.ts` — FFT correctness, feature separation on both demo classes, verdict bands (40/60 inclusive), explainability ordering, silence, sub-window clips, async progress monotonicity.
+- `rules.test.ts` — multilingual detection (en/hi/kn), phrase offsets, no false positives on benign text (`"whopping"`), span merging, combined-risk matrix.
+- `validate.test.ts` — magic-byte routing, size limits, duration gates, formatters.
+- `test/app.test.tsx` — jsdom render tests plus an end-to-end demo run (demo → pipeline → verdict + risk meter).
+
+---
+
+## Module API reference
+
+The analysis layer is pure TypeScript with no DOM dependency (except `decode.ts`), so it runs in the browser and in Node tests alike.
 
 ```ts
-// in convex/users.ts
-import { crud } from "convex-helpers/server/crud";
-import schema from "./schema.ts";
+// src/lib/audio
+decodeAudioBlob(blob): Promise<DecodedAudio>       // browser: decode → 16 kHz mono
+encodeWav(samples, sampleRate): Blob               // PCM → WAV (playback + demos)
+sha256(bytes): Promise<string>                     // file fingerprint
+validateAudioUpload(name, size, bytes)             // magic-byte + size gate
+routeFile(name, bytes): RouteResult                // Check-Anything routing
+extractSegmentFeatures(samples, rate)              // one window's cues
+scoreSegment(features): number                     // calibrated 0–100
+analyzeSignal(samples, rate): AnalysisResult       // synchronous (tests)
+analyzeSignalAsync(samples, rate, onProgress)      // async with progress (UI)
+computeSpectrogram(samples, rate, opts)            // log-frequency image
+synthesizeClip(kind, opts): Float32Array           // demo clips
 
-export const { create, read, update, destroy } = crud(schema, "users");
+// src/lib/scam
+detectLanguage(text): "en" | "hi" | "kn" | "unknown"
+analyzeTranscript(text): ScamAnalysis              // score, flags, explanations
+mergeSpans(flags)                                  // highlight spans
+combineRisk(voiceProbability, verdict, scriptScore): RiskMeter
 
-// in some file, in an action:
-const user = await ctx.runQuery(internal.users.read, { id: userId });
-
-await ctx.runMutation(internal.users.update, {
-  id: userId,
-  patch: {
-    status: "inactive",
-  },
-});
+// src/lib/audio/model.ts
+MODEL_REGISTRY                                     // heuristic | lfcc-cnn | wav2vec2-aasist
+resolveModel(configured?)                          // VITE_VSH_MODEL flag + safe fallback
 ```
 
+Key types: `AnalysisResult`, `SegmentResult`, `FeatureContribution` (`audio/detector`), `ScamAnalysis`, `FlaggedPhrase` (`scam/rules`), `RiskMeter` (`scam/risk`).
 
-## Common Convex Mistakes To Avoid
+---
 
-When using convex, make sure:
-- Document IDs are referenced as `_id` field, not `id`.
-- Document ID types are referenced as `Id<"TableName">`, not `string`.
-- Document object types are referenced as `Doc<"TableName">`.
-- Keep schemaValidation to false in the schema file.
-- You must correctly type your code so that it passes the type checker.
-- You must handle null / undefined cases of your convex queries for both frontend and backend, or else it will throw an error that your data could be null or undefined.
-- Always use the `@/folder` path, with `@/convex/folder/file.ts` syntax for importing convex files.
-- This includes importing generated files like `@/convex/_generated/server`, `@/convex/_generated/api`
-- Remember to import functions like useQuery, useMutation, useAction, etc. from `convex/react`
-- NEVER have return type validators.
+## Three-minute demo script
+
+1. **0:00–0:20** Landing — hero, the "how it works" strip, the signal table. Point out the privacy line: *nothing is uploaded*.
+2. **0:20–0:50** Click **run a scan** → drop a recording or hit **start recording** and say a few sentences.
+3. **0:50–1:30** Watch the staged pipeline (validate → hash → decode → spectrogram → score → risk), then the verdict card: probability, confidence ring, risk meter.
+4. **1:30–2:10** Scroll the signal view: waveform with flagged windows shaded, log-frequency spectrogram with the same windows tinted, then the per-window bar chart — highlight how one window can differ from the rest.
+5. **2:10–2:40** Open **why was this flagged?** — read one cue aloud with its measured value; expand **technical details**.
+6. **2:40–3:00** Paste the call's transcript (or load the `cloned-call` demo) → highlighted phrases, category explanations, combined HIGH RISK. Close with the disclaimer.
+
+---
+
+## Deploying
+
+The app is a static single-page bundle — there is no analysis server to host.
+
+```bash
+bun run build     # tsc + vite build → dist/
+bun run preview   # serve the production bundle locally
+```
+
+- **Vercel / Netlify / static host**: build command `bun run build`, output `dist/`.
+  SPA rewrites: send every path to `/index.html` so `/scan` deep links resolve.
+- **Convex**: only needed if you enable the template's optional auth (`bun convex dev`).
+  The scanner itself has no backend dependency and no environment variables.
+- **HTTPS**: required for microphone capture (`getUserMedia` is secure-context only).
+- **CORS / rate limits**: not applicable — nothing calls out. If you later expose the
+  v2 REST API, put it behind the same origin and keep rate limiting at the edge.
+
+---
+
+## Roadmap (v2)
+
+Image (EXIF + Grad-CAM), video (frame sampling + audio track), text authorship, PDF reports, account-scoped history with auto-purge, batch queues, public REST API with keys and OpenAPI docs, admin usage stats, and a trained wav2vec2 / AASIST checkpoint behind the existing `scoreSegment()` interface (CPU-friendly ONNX export included in the plan).
+
+---
+
+## Limitations
+
+- v1 is a **signal-heuristic baseline**, not a trained anti-spoofing network. It is strong on obvious vocoder output, digital silence and gated audio, and weaker on heavily processed human recordings (phone codecs, noise suppression, heavy compression).
+- Telephone-band audio triggers the narrowband guard, which down-weights bandwidth cues and pushes the result toward **uncertain** — by design.
+- Auto-transcription is not included: the scam engine runs on a transcript you paste (demo transcripts ship with the demo clips).
+- Nothing here is forensic evidence.
+
+## Stack
+
+React 19 · Vite 7 · TypeScript (strict) · Tailwind CSS v4 · shadcn/ui · Recharts · WaveSurfer.js 8 · Framer Motion · Vitest 5 · Convex (auth only)
