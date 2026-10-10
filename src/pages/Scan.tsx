@@ -1,4 +1,5 @@
 import { StatusChip, TermWindow } from "@/components/Terminal";
+import { EnsemblePanel, type VocalsResult } from "@/components/scan/EnsemblePanel";
 import { ExplainPanel } from "@/components/scan/ExplainPanel";
 import { InputPanel } from "@/components/scan/InputPanel";
 import { ScamPanel } from "@/components/scan/ScamPanel";
@@ -11,12 +12,17 @@ import { SiteFooter } from "@/components/site/SiteFooter";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { DETECTOR_PARAMS, analyzeSignalAsync, type AnalysisResult } from "@/lib/audio/detector";
 import { decodeAudioBlob, encodeWav, sha256 } from "@/lib/audio/decode";
+import { applyEnsemble, type LearnedModelResult } from "@/lib/audio/ensemble";
+import { blobToBase64, fetchLearnedScores, vocalsBlobFromBase64 } from "@/lib/audio/learned";
+import { detectMusic, type MusicReport } from "@/lib/audio/music";
 import { computeSpectrogram, type Spectrogram } from "@/lib/audio/spectrogram";
 import { synthesizeClip } from "@/lib/audio/synth";
 import { formatBytes, formatDuration, validateAudioUpload } from "@/lib/audio/validate";
 import { demoClipById } from "@/lib/demo/clips";
 import { combineRisk } from "@/lib/scam/risk";
 import { analyzeTranscript, type ScamAnalysis } from "@/lib/scam/rules";
+import { api } from "@/convex/_generated/api";
+import { useAction } from "convex/react";
 import { ArrowLeft, ShieldAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -33,7 +39,14 @@ interface CompletedScan {
   audioBlob: Blob;
   samples: Float32Array;
   durationSec: number;
+  /** Final (possibly ensemble) analysis shown everywhere. */
   analysis: AnalysisResult;
+  /** On-device heuristic score alone, shown next to the learned model. */
+  heuristicProbability: number;
+  learned: LearnedModelResult | null;
+  music: MusicReport | null;
+  vocals: VocalsResult | null;
+  analysisMode: "ensemble" | "private" | "heuristic";
   spectrogram: Spectrogram;
   transcript: string;
   transcriptNote?: string;
@@ -47,8 +60,12 @@ const STAGE_TEMPLATE: PipelineStage[] = [
   { id: "decode", label: "decode + resample to 16 kHz mono", status: "pending" },
   { id: "spectrogram", label: "build log-frequency spectrogram", status: "pending" },
   { id: "score", label: "score sliding 4-second windows", status: "pending" },
+  { id: "music", label: "check for music / mixed content", status: "pending" },
+  { id: "model", label: "learned anti-spoofing model (server)", status: "pending" },
   { id: "risk", label: "calibrate probability + risk meter", status: "pending" },
 ];
+
+const PRIVATE_MODE_KEY = "vsh-private-mode";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -69,7 +86,29 @@ export default function Scan() {
   const [scan, setScan] = useState<CompletedScan | null>(null);
   const [scam, setScam] = useState<ScamAnalysis>(() => analyzeTranscript(""));
   const [error, setError] = useState<string | null>(null);
+  const [privateMode, setPrivateMode] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(PRIVATE_MODE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const counter = useRef(0);
+
+  const scoreAudio = useAction(api.voiceshield.scoreAudio);
+  const separateAudio = useAction(api.voiceshield.separateAudio);
+
+  const togglePrivateMode = useCallback(() => {
+    setPrivateMode((previous) => {
+      const next = !previous;
+      try {
+        window.localStorage.setItem(PRIVATE_MODE_KEY, next ? "1" : "0");
+      } catch {
+        // Storage can be blocked; the in-memory toggle still works.
+      }
+      return next;
+    });
+  }, []);
 
   const runPipeline = useCallback(
     async (input: {
@@ -141,13 +180,81 @@ export default function Scan() {
         // 5. score windows
         current = setStageStatus(current, "score", "active");
         setStages(current);
-        const analysis = await analyzeSignalAsync(samples, 16000, (fraction) => {
-          setProgress(0.45 + fraction * 0.45);
+        const heuristicAnalysis = await analyzeSignalAsync(samples, 16000, (fraction) => {
+          setProgress(0.45 + fraction * 0.35);
         });
         current = setStageStatus(current, "score", "done");
         setStages(current);
+        setProgress(0.8);
 
-        // 6. transcript + risk
+        // 6. music detection (+ vocal separation on the server when it is a song)
+        current = setStageStatus(current, "music", "active");
+        setStages(current);
+        await tick();
+        const music = detectMusic(samples, 16000);
+        let vocals: VocalsResult | null = null;
+        if (music.isMusic) {
+          if (privateMode) {
+            vocals = {
+              probability: heuristicAnalysis.probability,
+              verdict: heuristicAnalysis.verdict,
+              available: false,
+              note: "Vocal separation needs the server; private mode keeps the whole file on-device, so the full mix was scored as-is.",
+            };
+          } else {
+            try {
+              const separation = await separateAudio({
+                audioBase64: await blobToBase64(audioBlob),
+              });
+              if (separation.ok) {
+                const vocalsBlob = vocalsBlobFromBase64(separation.vocalsBase64);
+                const decodedVocals = await decodeAudioBlob(vocalsBlob);
+                const vocalsAnalysis = await analyzeSignalAsync(decodedVocals.samples, 16000);
+                vocals = {
+                  probability: vocalsAnalysis.probability,
+                  verdict: vocalsAnalysis.verdict,
+                  available: true,
+                };
+              } else {
+                vocals = {
+                  probability: heuristicAnalysis.probability,
+                  verdict: heuristicAnalysis.verdict,
+                  available: false,
+                  note: separation.reason,
+                };
+              }
+            } catch {
+              vocals = {
+                probability: heuristicAnalysis.probability,
+                verdict: heuristicAnalysis.verdict,
+                available: false,
+                note: "Vocal separation failed; the full mix was scored as-is.",
+              };
+            }
+          }
+        }
+        current = setStageStatus(current, "music", "done");
+        setStages(current);
+        setProgress(0.85);
+
+        // 7. learned anti-spoofing model (server) → weighted ensemble
+        current = setStageStatus(current, "model", "active");
+        setStages(current);
+        let learned: LearnedModelResult | null = null;
+        let analysis = heuristicAnalysis;
+        let analysisMode: CompletedScan["analysisMode"] = "heuristic";
+        if (privateMode) {
+          analysisMode = "private";
+        } else {
+          learned = await fetchLearnedScores(samples, 16000, scoreAudio);
+          analysis = applyEnsemble(heuristicAnalysis, learned);
+          analysisMode = learned.available ? "ensemble" : "heuristic";
+        }
+        current = setStageStatus(current, "model", "done");
+        setStages(current);
+        setProgress(0.92);
+
+        // 8. transcript + risk
         current = setStageStatus(current, "risk", "active");
         setStages(current);
         const scamResult = analyzeTranscript(input.transcript);
@@ -166,6 +273,11 @@ export default function Scan() {
           samples,
           durationSec,
           analysis,
+          heuristicProbability: heuristicAnalysis.probability,
+          learned,
+          music,
+          vocals,
+          analysisMode,
           spectrogram,
           transcript: input.transcript,
           transcriptNote: input.transcriptNote,
@@ -177,7 +289,7 @@ export default function Scan() {
         setStage("result");
         window.scrollTo({ top: 0, behavior: "smooth" });
         toast.success("Analysis complete", {
-          description: `${analysis.probability.toFixed(1)}% synthetic · ${analysis.segments.length} windows scored`,
+          description: `${analysis.probability.toFixed(1)}% synthetic · ${analysis.segments.length} windows scored${learned?.available ? ` · ${learned.modelId}` : " · heuristic only"}`,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Something went wrong while analysing.";
@@ -186,7 +298,7 @@ export default function Scan() {
         toast.error("Analysis stopped", { description: message });
       }
     },
-    [],
+    [privateMode, scoreAudio, separateAudio],
   );
 
   const handleFile = useCallback(
@@ -305,7 +417,16 @@ export default function Scan() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <StatusChip tone="ok">on-device</StatusChip>
+            <StatusChip tone={privateMode ? "warn" : "ok"}>
+              {privateMode ? "private mode · on-device" : "ensemble · server model"}
+            </StatusChip>
+            <button
+              type="button"
+              onClick={togglePrivateMode}
+              className="border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 rounded border px-2 py-1 text-[10px] font-semibold tracking-wide uppercase transition-colors"
+            >
+              {privateMode ? "use learned model" : "private mode"}
+            </button>
             <StatusChip tone="muted">25 mb max</StatusChip>
             <StatusChip tone="muted">en · hi · kn</StatusChip>
           </div>
@@ -360,6 +481,27 @@ export default function Scan() {
               </div>
             </TermWindow>
 
+            <TermWindow
+              title="models & music"
+              right={
+                <span className="text-muted-foreground text-[10px]">
+                  {scan.analysisMode === "private"
+                    ? "private mode — nothing left this tab"
+                    : scan.analysisMode === "ensemble"
+                      ? "learned model + heuristic"
+                      : "on-device heuristic only"}
+                </span>
+              }
+            >
+              <EnsemblePanel
+                result={scan.analysis}
+                heuristicProbability={scan.heuristicProbability}
+                learned={scan.learned}
+                music={scan.music}
+                vocals={scan.vocals}
+              />
+            </TermWindow>
+
             <TermWindow title="window timeline">
               <SegmentTimeline segments={scan.analysis.segments} durationSec={scan.durationSec} />
             </TermWindow>
@@ -384,8 +526,11 @@ export default function Scan() {
                   probability, not proof. It cannot establish that a recording is authentic or that a
                   caller is fraudulent. Nothing here is admissible evidence — verify independently
                   through official channels before transferring money or sharing credentials.
-                  {" "}File size {formatBytes(scan.fileSize)} · analysed entirely in this tab · delete
-                  it any time with the button above.
+                  {" "}File size {formatBytes(scan.fileSize)} ·{" "}
+                  {scan.analysisMode === "private"
+                    ? "analysed entirely in this tab — nothing was uploaded"
+                    : "the heuristic ran in this tab; the first 3 minutes were also sent to the deployed model for the learned score"}
+                  {" "}· delete it any time with the button above.
                 </span>
               </p>
             </div>

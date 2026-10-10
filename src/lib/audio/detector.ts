@@ -198,9 +198,12 @@ export function scoreSegment(f: SegmentFeatures): number {
   return clamp01(sigmoid(z)) * 100;
 }
 
-export function verdictFor(probability: number): SegmentVerdict {
-  if (probability >= DETECTOR_PARAMS.uncertainHigh) return "ai";
-  if (probability < DETECTOR_PARAMS.uncertainLow) return "real";
+export function verdictFor(
+  probability: number,
+  bands: { uncertainLow: number; uncertainHigh: number } = DETECTOR_PARAMS,
+): SegmentVerdict {
+  if (probability >= bands.uncertainHigh) return "ai";
+  if (probability < bands.uncertainLow) return "real";
   return "uncertain";
 }
 
@@ -214,10 +217,50 @@ function yieldToUi(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/**
+ * Threshold policy used when turning pooled window scores into a file verdict.
+ * The heuristic default is 40–60; the learned-model ensemble widens the band so
+ * the system reports "uncertain" instead of guessing (see docs/eval.md).
+ */
+export interface ResultPolicy {
+  uncertainLow: number;
+  uncertainHigh: number;
+  flagSegment: number;
+  model?: string;
+}
+
+function defaultPolicy(): ResultPolicy {
+  return {
+    uncertainLow: DETECTOR_PARAMS.uncertainLow,
+    uncertainHigh: DETECTOR_PARAMS.uncertainHigh,
+    flagSegment: DETECTOR_PARAMS.flagSegment,
+  };
+}
+
+function bandVerdict(probability: number, policy: ResultPolicy): SegmentVerdict {
+  if (probability >= policy.uncertainHigh) return "ai";
+  if (probability < policy.uncertainLow) return "real";
+  return "uncertain";
+}
+
+/**
+ * Pool scored windows into a file-level result. Exported so the learned-model
+ * ensemble can re-compose a result from blended window scores.
+ */
+export function composeAnalysisResult(
+  segments: SegmentResult[],
+  durationSec: number,
+  sampleRate: number,
+  policy: ResultPolicy = defaultPolicy(),
+): AnalysisResult {
+  return buildResult(segments, durationSec, sampleRate, policy);
+}
+
 function buildResult(
   segments: SegmentResult[],
   durationSec: number,
   sampleRate: number,
+  policy: ResultPolicy = defaultPolicy(),
 ): AnalysisResult {
   const active = segments.filter((s) => !s.silent);
   const pool = active.length > 0 ? active : segments;
@@ -228,14 +271,14 @@ function buildResult(
   ) * 100;
 
   const flaggedSegments = segments
-    .filter((s) => !s.silent && s.probability >= DETECTOR_PARAMS.flagSegment)
+    .filter((s) => !s.silent && s.probability >= policy.flagSegment)
     .map((s) => s.index);
   const mixedContent =
     peak.probability - meanP >= DETECTOR_PARAMS.mixedGap &&
-    meanP < DETECTOR_PARAMS.uncertainHigh &&
-    peak.probability >= DETECTOR_PARAMS.flagSegment;
+    meanP < policy.uncertainHigh &&
+    peak.probability >= policy.flagSegment;
 
-  const verdict: Verdict = mixedContent ? "partial" : verdictFor(probability);
+  const verdict: Verdict = mixedContent ? "partial" : bandVerdict(probability, policy);
   const { value: rawConfidence, level: confidenceLevel } = confidenceFor(probability);
   const confidence =
     verdict === "partial" && active.length > 0
@@ -273,7 +316,11 @@ function buildResult(
 
   const notes: string[] = [];
   const model = resolveModel();
-  if (model.fallbackNote) notes.push(model.fallbackNote);
+  if (policy.model) {
+    notes.push(`Scored by ${policy.model}.`);
+  } else if (model.fallbackNote) {
+    notes.push(model.fallbackNote);
+  }
   if (segments.some((s) => s.features.narrowband)) {
     notes.push(
       "Narrowband telephone channel detected (≈3.4 kHz). Bandwidth-based cues are down-weighted; rely more on the noise-floor and scam-script signals.",
@@ -294,7 +341,7 @@ function buildResult(
   }
 
   return {
-    model: model.backend.modelId,
+    model: policy.model ?? model.backend.modelId,
     durationSec,
     sampleRate,
     probability,

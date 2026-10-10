@@ -1,9 +1,15 @@
 /**
  * Model registry + backend config flag (spec §1A).
  *
- * v1 bundles one backend: the signal-heuristic scorer. The registry and flag
- * exist so a trained checkpoint (LFCC/MFCC+CNN, wav2vec2, AASIST) can be dropped
- * in later without touching the analysis pipeline — see docs/MODEL_CARD.md.
+ * Two backends are live in this build:
+ *  - `heuristic` (vsa-heuristic-0.1) — the signal scorer, always on-device;
+ *  - `wav2vec2-aasist` — a pretrained anti-spoofing checkpoint served by the
+ *    deployed backend (backend/ in this repo, Hugging Face Space or Render)
+ *    and reached through a Convex action. It joins the heuristic as a
+ *    weighted ensemble; see src/lib/audio/ensemble.ts and docs/eval.md.
+ *
+ * `lfcc-cnn` stays registered so a locally bundled checkpoint can be added
+ * later without touching the pipeline.
  */
 
 export type ModelBackendId = "heuristic" | "lfcc-cnn" | "wav2vec2-aasist";
@@ -16,6 +22,8 @@ export interface ModelBackend {
   kind: "signal" | "learned";
   /** True when this build ships runnable weights for the backend. */
   bundled: boolean;
+  /** True when the backend runs on the deployed service, not on-device. */
+  remote?: boolean;
   note: string;
 }
 
@@ -34,15 +42,16 @@ export const MODEL_REGISTRY: Record<ModelBackendId, ModelBackend> = {
     label: "LFCC/MFCC + CNN anti-spoofing checkpoint",
     kind: "learned",
     bundled: false,
-    note: "Checkpoint not bundled in v1 — training entrypoints land with the v2 model release.",
+    note: "Checkpoint not bundled in this build — training entrypoints land with the v2 model release.",
   },
   "wav2vec2-aasist": {
     id: "wav2vec2-aasist",
-    modelId: "vsa-aasist-0.1",
-    label: "wav2vec2 / AASIST-style raw-audio model",
+    modelId: "vsa-server-antispooof-0.1",
+    label: "Pretrained wav2vec2 / AASIST-style anti-spoofing model (server)",
     kind: "learned",
     bundled: false,
-    note: "Checkpoint not bundled in v1 — ONNX (CPU) export is planned alongside it.",
+    remote: true,
+    note: "Served by the deployed backend (see backend/README.md) and called through a Convex action, so keys and URLs stay server-side. The first 3 minutes of audio are sent; private mode keeps everything on-device.",
   },
 };
 
@@ -54,6 +63,10 @@ function configuredId(): ModelBackendId {
   return "heuristic";
 }
 
+function remoteEnabled(): boolean {
+  return import.meta.env?.VITE_VSH_REMOTE !== "off";
+}
+
 export interface ResolvedModel {
   backend: ModelBackend;
   /** Present when the configured backend could not be loaded and fell back. */
@@ -61,19 +74,27 @@ export interface ResolvedModel {
 }
 
 /**
- * Resolve the configured backend. Unknown ids and unbundled checkpoints fall
- * back to the heuristic with an explicit note — the pipeline never silently
- * pretends a missing model ran.
+ * Resolve the configured backend. Unknown ids and unavailable checkpoints
+ * fall back to the heuristic with an explicit note — the pipeline never
+ * silently pretends a missing model ran. Remote backends are resolvable
+ * even though no weights are bundled; whether the service answers is checked
+ * at analysis time (src/lib/audio/learned.ts).
  */
 export function resolveModel(configured: ModelBackendId = configuredId()): ResolvedModel {
   const backend = MODEL_REGISTRY[configured];
   if (!backend) {
     return {
       backend: MODEL_REGISTRY.heuristic,
-      fallbackNote: `Unknown model "${configured}" — using ${MODEL_REGISTRY.heuristic.modelId}.`,
+      fallbackNote: `Unknown model \"${configured}\" — using ${MODEL_REGISTRY.heuristic.modelId}.`,
     };
   }
-  if (!backend.bundled) {
+  if (backend.remote && !remoteEnabled()) {
+    return {
+      backend: MODEL_REGISTRY.heuristic,
+      fallbackNote: `${backend.label} is configured but private mode / VITE_VSH_REMOTE=off disables remote scoring — heuristic only.`,
+    };
+  }
+  if (!backend.bundled && !backend.remote) {
     return {
       backend: MODEL_REGISTRY.heuristic,
       fallbackNote: `${backend.label} is configured but not bundled in this build — scored with ${MODEL_REGISTRY.heuristic.modelId} instead. ${backend.note}`,

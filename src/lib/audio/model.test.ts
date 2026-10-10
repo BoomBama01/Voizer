@@ -9,16 +9,17 @@ import { analyzeSignal } from "./detector";
 import { synthesizeClip } from "./synth";
 
 describe("model registry", () => {
-  it("ships exactly one bundled backend in v1", () => {
+  it("ships exactly one on-device bundled backend", () => {
     const bundled = MODEL_BACKEND_IDS.filter((id) => MODEL_REGISTRY[id].bundled);
     expect(bundled).toEqual(["heuristic"]);
     expect(MODEL_REGISTRY.heuristic.modelId).toBe("vsa-heuristic-0.1");
     expect(MODEL_REGISTRY.heuristic.kind).toBe("signal");
   });
 
-  it("documents the learned backends that can be swapped in", () => {
+  it("registers the learned backends", () => {
     expect(MODEL_REGISTRY["lfcc-cnn"].kind).toBe("learned");
     expect(MODEL_REGISTRY["wav2vec2-aasist"].kind).toBe("learned");
+    expect(MODEL_REGISTRY["wav2vec2-aasist"].remote).toBe(true);
     expect(MODEL_REGISTRY["lfcc-cnn"].note.length).toBeGreaterThan(20);
   });
 });
@@ -30,11 +31,18 @@ describe("resolveModel", () => {
     expect(resolved.fallbackNote).toBeUndefined();
   });
 
-  it("falls back with an explicit note when a checkpoint is not bundled", () => {
+  it("resolves the remote learned backend without a fallback note", () => {
     const resolved = resolveModel("wav2vec2-aasist");
+    expect(resolved.backend.id).toBe("wav2vec2-aasist");
+    expect(resolved.backend.remote).toBe(true);
+    expect(resolved.fallbackNote).toBeUndefined();
+  });
+
+  it("falls back with an explicit note when a checkpoint is neither bundled nor remote", () => {
+    const resolved = resolveModel("lfcc-cnn");
     expect(resolved.backend.id).toBe("heuristic");
     expect(resolved.fallbackNote).toContain("not bundled");
-    expect(resolved.fallbackNote).toContain("wav2vec2");
+    expect(resolved.fallbackNote).toContain("LFCC");
   });
 
   it("falls back on unknown ids instead of crashing", () => {

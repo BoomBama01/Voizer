@@ -32,12 +32,17 @@ const schema = defineSchema(
       role: v.optional(roleValidator), // role of the user. do not remove
     }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // add other tables here
-
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
+    // Voice-cloning job ledger: per-identity rate limiting + one-hour
+    // retention. Rows carry no audio and are deleted when they expire
+    // (see src/convex/cloneJobs.ts).
+    cloneJobs: defineTable({
+      identity: v.string(),
+      createdAt: v.number(),
+      expiresAt: v.number(),
+      outcome: v.string(), // "pending" | "ok" | "refused" | "failed"
+      reason: v.optional(v.string()),
+    }).index("by_identity_time", ["identity", "createdAt"])
+      .index("by_expiry", ["expiresAt"]),
   },
   {
     schemaValidation: false,

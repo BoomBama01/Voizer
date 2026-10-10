@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+numpy>=1.26
+scipy>=1.13
+soundfile>=0.12.1
+transformers>=4.44
+torch>=2.2
+# Optional features (install to enable the matching endpoint):
+#   demucs>=4.0        -> POST /v1/separate  (vocal separation, MIT)
+#   chatterbox-tts     -> POST /v1/clone     (zero-shot TTS, MIT)
