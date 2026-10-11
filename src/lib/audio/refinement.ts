@@ -75,7 +75,7 @@ export function buildApplicationRefinement(
       next++;
     }
 
-    const memberCount = (next - cursor) + 1;
+    const memberCount = next - cursor;
     const averageScore = memberCount > 0 ? scoreSum / memberCount : 0;
 
     const spanStart = loSec;
@@ -91,7 +91,7 @@ export function buildApplicationRefinement(
       }
     }
 
-    const finalMemberCount = (next - cursor) + 1;
+    const finalMemberCount = next - cursor;
     const finalAverageScore = finalMemberCount > 0 ? scoreSum / finalMemberCount : 0;
     const safeAverage = Math.max(0, finalAverageScore);
     const roundedScore = Math.round(safeAverage);

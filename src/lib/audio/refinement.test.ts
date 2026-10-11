@@ -32,12 +32,11 @@ describe("buildApplicationRefinement", () => {
     expect((r as NonNullable<typeof r>).clusters.length).toBeGreaterThan(0);
 
     const cluster = r as NonNullable<typeof r>;
-    expect(
-      cluster.clusters.some((c: Cluster) => c.loSec >= 0 && c.hiSec <= 8 && c.score >= 65),
-    ).toBe(true);
-    expect(
-      cluster.clusters.some((c: Cluster) => c.loSec >= 8 && c.score < 65),
-    ).toBe(true);
+    expect(cluster.clusters.length).toBe(1);
+    const c = cluster.clusters[0];
+    expect(c.loSec).toBeCloseTo(0, 3);
+    expect(c.hiSec).toBeCloseTo(8, 3);
+    expect(c.score).toBe(100);
   });
 
   it("includes adjacent hint metadata inside span clusters", () => {
