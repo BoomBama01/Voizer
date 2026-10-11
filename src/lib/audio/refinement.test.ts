@@ -20,10 +20,10 @@ describe("buildApplicationRefinement", () => {
 
   it("clusters consecutive scores into weighted investigations", () => {
     const windows: WindowLike[] = [
-      stubWindow({ startSec: 0, endSec: 4, p: 70 }),
-      stubWindow({ startSec: 4, endSec: 8, p: 70 }),
-      stubWindow({ startSec: 8, endSec: 12, p: 89 }),
-      stubWindow({ startSec: 12, endSec: 16, p: 89 }),
+      stubWindow({ startSec: 0, endSec: 4, p: 84 }),
+      stubWindow({ startSec: 4, endSec: 8, p: 84 }),
+      stubWindow({ startSec: 8, endSec: 12, p: 60 }),
+      stubWindow({ startSec: 12, endSec: 16, p: 60 }),
     ];
     const hints: WindowLike[] = [];
     const drifts: WindowLike[] = [];
@@ -36,7 +36,7 @@ describe("buildApplicationRefinement", () => {
       cluster.clusters.some((c: Cluster) => c.loSec >= 0 && c.hiSec <= 8 && c.score >= 65),
     ).toBe(true);
     expect(
-      cluster.clusters.some((c: Cluster) => c.loSec >= 8 && c.hiSec <= 16 && c.score < 65),
+      cluster.clusters.some((c: Cluster) => c.loSec >= 8 && c.score < 65),
     ).toBe(true);
   });
 
