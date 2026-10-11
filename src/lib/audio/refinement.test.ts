@@ -20,10 +20,10 @@ describe("buildApplicationRefinement", () => {
 
   it("clusters consecutive scores into weighted investigations", () => {
     const windows: WindowLike[] = [
-      stubWindow({ startSec: 0, endSec: 4, p: 84 }),
-      stubWindow({ startSec: 4, endSec: 8, p: 84 }),
-      stubWindow({ startSec: 8, endSec: 12, p: 60 }),
-      stubWindow({ startSec: 12, endSec: 16, p: 60 }),
+      stubWindow({ startSec: 0, endSec: 4, p: 100 }),
+      stubWindow({ startSec: 4, endSec: 8, p: 100 }),
+      stubWindow({ startSec: 8, endSec: 12, p: 55 }),
+      stubWindow({ startSec: 12, endSec: 16, p: 55 }),
     ];
     const hints: WindowLike[] = [];
     const drifts: WindowLike[] = [];

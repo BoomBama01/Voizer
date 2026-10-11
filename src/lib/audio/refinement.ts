@@ -63,7 +63,6 @@ export function buildApplicationRefinement(
     let explanationParts: string[] = [];
     if (window.explanation) explanationParts.push(window.explanation);
 
-    // Absorb adjacent windows while the band stays consecutive.
     let next = cursor + 1;
     while (next < windows.length && windows[next].startSec <= hiSec + 0.001) {
       const w = windows[next];
@@ -75,10 +74,10 @@ export function buildApplicationRefinement(
       if (w.explanation) explanationParts.push(w.explanation);
       next++;
     }
+
     const memberCount = (next - cursor) + 1;
     const averageScore = memberCount > 0 ? scoreSum / memberCount : 0;
 
-    // Fold in any hint/drift spans that overlap this span.
     const spanStart = loSec;
     const spanEnd = hiSec;
     for (const [key, extra] of extraSpans) {
@@ -94,10 +93,17 @@ export function buildApplicationRefinement(
 
     const finalMemberCount = (next - cursor) + 1;
     const finalAverageScore = finalMemberCount > 0 ? scoreSum / finalMemberCount : 0;
+    const safeAverage = Math.max(0, finalAverageScore);
+    const roundedScore = Math.round(safeAverage);
+    const boundedScore = Math.min(100, Math.max(0, roundedScore));
+    if (!Number.isFinite(boundedScore)) {
+      throw new Error("unreachable");
+    }
+
     clusters.push({
       loSec,
       hiSec,
-      score: Math.min(100, Math.max(0, finalAverageScore)),
+      score: boundedScore,
       cues: explanationParts.filter(Boolean).slice(0, 3),
       explanation: explanationParts.filter(Boolean).join("; "),
     });
