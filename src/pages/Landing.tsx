@@ -530,7 +530,7 @@ const DEMOS = DEMO_CLIPS.map((clip) => ({
   title: clip.title,
   blurb: clip.blurb,
   expected: clip.expected === "ai" ? "cloned" : clip.expected,
-  tag: clip.transcriptLanguage === "hi" ? "हिन्दी script" : "en script",
+  tag: "en script",
   tone: (clip.expected === "real" ? "ok" : clip.expected === "ai" ? "risk" : "warn") as
     | "ok"
     | "warn"

@@ -1,67 +1,56 @@
-import type { ClipKind } from "@/lib/audio/synth";
-
-export interface DemoClip {
-  id: string;
-  synthesis: ClipKind;
-  seconds: number;
-  fileName: string;
-  title: string;
-  blurb: string;
-  /** What the detector is expected to say about the audio. */
-  expected: "real" | "partial" | "ai";
-  /** Illustrative transcript shown in the scam-script panel. */
-  transcript: string;
-  transcriptLanguage: "en" | "hi";
-  transcriptNote: string;
-}
-
-/**
- * The demo clips are generated in-browser by `synthesizeClip` — they are
- * synthetic illustrations of each signal class, not recordings of real people,
- * and the transcripts are sample scripts for the scam-rule engine.
- */
-export const DEMO_CLIPS: DemoClip[] = [
+export const DEMO_CLIPS = [
   {
-    id: "voice-memo",
-    synthesis: "real",
-    seconds: 12,
-    fileName: "voice-memo.wav",
-    title: "Everyday voice memo",
-    blurb: "Microphone capture: room tone, hum, reflections and natural pitch drift.",
-    expected: "real",
-    transcript:
-      "Hey, it's me. I'm getting into the meeting now so I'll call you back around seven. Can you pick up some milk on the way home? Thanks, talk soon.",
-    transcriptLanguage: "en",
-    transcriptNote: "Sample transcript of an ordinary message — no scam indicators.",
-  },
-  {
-    id: "cloned-call",
+    id: "cloned-urgency",
+    title: "cloned urgency call",
     synthesis: "clone",
-    seconds: 12,
-    fileName: "cloned-bank-call.wav",
-    title: "Cloned bank call",
-    blurb: "Vocoder-like render: digital silence, hard 6.2 kHz bandwidth wall, steady pitch.",
+    seconds: 8,
     expected: "ai",
-    transcript:
-      "Hello, this is Mr Sharma from your bank's account department calling about your KYC update. Your account will be blocked within 24 hours if it is not updated today. To complete the re-verification immediately, please share the OTP we just sent and confirm your UPI PIN. I will send a link so you can install AnyDesk and I can update the account from here.",
+    blurb: "A cloned urgency call asks for an OTP immediately. The demo score reflects the vocoder artifacts left by the synthesis, not whether the script itself is convincing.",
+    transcript: "This is the bank fraud team. Your account shows unusual activity. Please confirm your OTP now.",
+    transcriptNote: "matches urgency script with OTP request",
     transcriptLanguage: "en",
-    transcriptNote: "Sample transcript of a classic bank-KYC scam script.",
+    fileName: "cloned-urgency.wav",
   },
   {
-    id: "mixed-recording",
-    synthesis: "mixed",
-    seconds: 12,
-    fileName: "mixed-recording.wav",
-    title: "Partially edited recording",
-    blurb: "Natural first half, cloned second half — exactly what the sliding window catches.",
-    expected: "partial",
-    transcript:
-      "नमस्ते, मैं आपके बैंक से बोल रहा हूँ। आपका केवाईसी अपडेट नहीं है, 24 घंटे में खाता बंद हो जाएगा। कृपया तुरंत भेजा गया ओटीपी बताइए और यूपीआई पिन साझा करें। नहीं तो पुलिस मुकदमा दर्ज करेगी।",
-    transcriptLanguage: "hi",
-    transcriptNote: "Sample Hindi transcript of a bank-KYC scam script.",
+    id: "real-courier",
+    title: "real courier check-in",
+    synthesis: "real",
+    seconds: 7,
+    expected: "real",
+    blurb: "A short real recording with natural room tone, breath and pitch drift. It should sit in the likely-human band.",
+    transcript: "Hi, I am at the gate. Which entrance should I use for the drop-off?",
+    transcriptNote: "ordinary logistics question",
+    transcriptLanguage: "en",
+    fileName: "real-courier.wav",
   },
-];
+  {
+    id: "cloned-impostor",
+    title: "impersonator asking for transfer",
+    synthesis: "clone",
+    seconds: 9,
+    expected: "ai",
+    blurb: "A cloned voice impersonates a known contact and asks for an urgent UPI transfer — both a voice artifact signal and a scam-script signal.",
+    transcript: "Amey here. I am stuck at the airport. Can you send Rs 40,000 to this UPI ID right now?",
+    transcriptNote: "names a known contact and asks for an urgent transfer",
+    transcriptLanguage: "en",
+    fileName: "cloned-impostor.wav",
+  },
+  {
+    id: "mixed-spliced",
+    title: "spliced clone + real tail",
+    synthesis: "mixed",
+    seconds: 10,
+    expected: "ai",
+    blurb: "A spliced recording: the first half is synthesised and the tail is real, so the timeline should show a flagged region at the start.",
+    transcript: "Please verify your Aadhaar and PIN. The partial payment has failed.",
+    transcriptNote: "first half synthesised, tail is real",
+    transcriptLanguage: "en",
+    fileName: "mixed-spliced.wav",
+  },
+] as const;
 
-export function demoClipById(id: string): DemoClip | undefined {
-  return DEMO_CLIPS.find((clip) => clip.id === id);
+export type DemoClipId = (typeof DEMO_CLIPS)[number]["id"];
+
+export function demoClipById(id: string): (typeof DEMO_CLIPS)[number] | null {
+  return (DEMO_CLIPS.find((c) => c.id === id) ?? null) as (typeof DEMO_CLIPS)[number] | null;
 }
